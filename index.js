@@ -5,7 +5,9 @@ const express = require("express");
 const cors = require("cors");
 
 const { connectDB } = require("./config/db");
+
 const initializeCollections = require("./database/collections");
+const initializeIndexes = require("./database/indexes");
 
 const app = express();
 
@@ -35,6 +37,8 @@ const startServer = async () => {
     await connectDB();
 
     await initializeCollections();
+
+    await initializeIndexes();
 
     app.listen(PORT, () => {
       console.log(`FixMate Server running on port ${PORT}`);
