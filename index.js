@@ -9,8 +9,7 @@ const { connectDB } = require("./config/db");
 const initializeCollections = require("./database/collections");
 const initializeIndexes = require("./database/indexes");
 
-// Routes
-const serviceRoutes = require("./routes/serviceRoutes");
+const servicesRoutes = require("./routes/services");
 
 const app = express();
 
@@ -35,7 +34,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Public Services API
-app.use("/api/services", serviceRoutes);
+app.use("/api/services", servicesRoutes);
 
 // Start Server
 const startServer = async () => {
@@ -48,7 +47,9 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`FixMate Server running on port ${PORT}`);
+      console.log("Services API: http://localhost:5000/api/services");
     });
+
   } catch (error) {
     console.error("Server startup failed:", error.message);
     process.exit(1);
