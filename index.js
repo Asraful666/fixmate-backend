@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 
 const { connectDB } = require("./config/db");
+const initializeCollections = require("./database/collections");
 
 const app = express();
 
@@ -20,7 +21,7 @@ app.use(
 
 app.use(express.json());
 
-// Health Check Route
+// Health Check
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
@@ -28,16 +29,18 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Start Server after MongoDB connection
+// Start Server
 const startServer = async () => {
   try {
     await connectDB();
+
+    await initializeCollections();
 
     app.listen(PORT, () => {
       console.log(`FixMate Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("Server startup failed.");
+    console.error("Server startup failed:", error.message);
     process.exit(1);
   }
 };
