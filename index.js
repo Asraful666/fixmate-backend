@@ -9,6 +9,9 @@ const { connectDB } = require("./config/db");
 const initializeCollections = require("./database/collections");
 const initializeIndexes = require("./database/indexes");
 
+// Routes
+const serviceRoutes = require("./routes/serviceRoutes");
+
 const app = express();
 
 const PORT = process.env.PORT || 5000;
@@ -30,6 +33,9 @@ app.get("/api/health", (req, res) => {
     message: "FixMate Backend Server is running!",
   });
 });
+
+// Public Services API
+app.use("/api/services", serviceRoutes);
 
 // Start Server
 const startServer = async () => {
