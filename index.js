@@ -1,7 +1,10 @@
 
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
+
+const { connectDB } = require("./config/db");
 
 const app = express();
 
@@ -17,7 +20,7 @@ app.use(
 
 app.use(express.json());
 
-// Temporary server health-check route
+// Health Check Route
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
@@ -25,7 +28,18 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`FixMate Server running on port ${PORT}`);
-});
+// Start Server after MongoDB connection
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, () => {
+      console.log(`FixMate Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed.");
+    process.exit(1);
+  }
+};
+
+startServer();
