@@ -103,6 +103,7 @@ const buildUsers = () =>
       email: "rahim@fixmate.test",
       emailVerified: true,
       role: "technician",
+      plan: "pro",
       phone: "+8801700000002",
       area: "Dhanmondi, Dhaka",
       bio: "Certified technician with 8 years of experience in smartphones, laptops and home appliances.",
@@ -121,6 +122,7 @@ const buildUsers = () =>
     const now = new Date();
     return {
       ...user,
+      plan: user.plan || "free",
       image: "",
       createdAt: now,
       updatedAt: now,
@@ -342,6 +344,7 @@ const buildServices = (usersById) => {
       technicianId: technician._id.toString(),
       technicianName: technician.name,
       technicianEmail: technician.email,
+      technicianPlan: technician.plan || "free",
       basePrice: service.basePrice,
       serviceMode: service.serviceMode,
       estimatedDuration: service.estimatedDuration,
@@ -365,9 +368,40 @@ const buildBookings = (usersById, servicesByTitle) => {
     createdDaysAgo,
     paymentStatus = "unpaid",
     rejectionReason = "",
+    rating = null,
+    review = "",
   }) => {
     const service = servicesByTitle[serviceTitle];
     const technician = usersById[service.technician];
+    const createdAt = daysFromNow(-createdDaysAgo);
+
+    const statusOrder = [
+      "requested",
+      "accepted",
+      "in-progress",
+      "completed",
+    ];
+
+    const historyPath = ["rejected", "cancelled"].includes(status)
+      ? ["requested", status]
+      : statusOrder.slice(0, statusOrder.indexOf(status) + 1);
+
+    if (status === "completed" && paymentStatus === "paid") {
+      historyPath.push("paid");
+    }
+
+    const statusHistory = historyPath.map((entry, position) => ({
+      status: entry,
+      changedAt: new Date(createdAt.getTime() + position * 6 * 60 * 60 * 1000),
+      note:
+        entry === "requested"
+          ? "Repair request sent."
+          : entry === "rejected"
+            ? rejectionReason || "Rejected by the technician."
+            : entry === "paid"
+              ? "Payment completed with Stripe."
+              : `Moved to ${entry}.`,
+    }));
 
     return {
       _id: new ObjectId(
@@ -395,7 +429,13 @@ const buildBookings = (usersById, servicesByTitle) => {
       finalAmount: service.basePrice,
       paymentStatus,
       rejectionReason,
-      createdAt: daysFromNow(-createdDaysAgo),
+      statusHistory,
+      rating,
+      review,
+      reviewedAt: rating
+        ? new Date(createdAt.getTime() + 7 * 6 * 60 * 60 * 1000)
+        : null,
+      createdAt,
       updatedAt: new Date(),
     };
   };
@@ -436,6 +476,9 @@ const buildBookings = (usersById, servicesByTitle) => {
       preferredDate: daysFromNow(-10),
       createdDaysAgo: 14,
       paymentStatus: "paid",
+      rating: 5,
+      review:
+        "Fast, tidy and very professional. The drum cleaning fixed the smell completely.",
     }),
     makeBooking({
       index: 5,
@@ -461,6 +504,7 @@ const buildPayment = (paidBooking) => {
 
   return {
     _id: new ObjectId("6a0000000000000000000301"),
+    paymentType: "booking",
     bookingId: paidBooking._id.toString(),
     serviceTitle: paidBooking.serviceTitle,
     customerName: paidBooking.customerName,

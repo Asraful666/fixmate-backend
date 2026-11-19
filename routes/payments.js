@@ -2,9 +2,13 @@ const express = require("express");
 const { ObjectId } = require("mongodb");
 
 const { getDB } = require("../config/db");
-const { verifyCustomer } = require("../middleware/authMiddleware");
+const {
+  verifyToken,
+  verifyCustomer,
+  verifyTechnician,
+} = require("../middleware/authMiddleware");
 const { getStripe, getClientUrl } = require("../utils/stripe");
-const { markBookingPaid } = require("../utils/payments");
+const { markBookingPaid, activateProPlan } = require("../utils/payments");
 const { isValidObjectId, toPositiveNumber } = require("../utils/validation");
 
 const router = express.Router();
@@ -157,8 +161,75 @@ const createCheckoutSession = async (req, res) => {
 router.post("/create-checkout-session", verifyCustomer, createCheckoutSession);
 router.post("/create-checkout", verifyCustomer, createCheckoutSession);
 
+// PRO PLAN SUBSCRIPTION CHECKOUT (technician)
+router.post("/subscribe", verifyTechnician, async (req, res) => {
+  try {
+    const stripe = getStripe();
+
+    if (!stripe) {
+      return res.status(503).json({
+        success: false,
+        message: "Stripe is not configured on the server yet.",
+      });
+    }
+
+    if (req.user.plan === "pro") {
+      return res.status(409).json({
+        success: false,
+        message: "You are already on the FixMate Pro plan.",
+      });
+    }
+
+    const envPrice = Number(process.env.PRO_PLAN_PRICE);
+    const price = Number.isFinite(envPrice) && envPrice > 0 ? envPrice : 19;
+
+    const clientUrl = getClientUrl();
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: req.user.email || undefined,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(price * 100),
+            product_data: {
+              name: "FixMate Pro Plan",
+              description:
+                "Unlimited service listings plus a Verified Pro badge on every card.",
+            },
+          },
+        },
+      ],
+      metadata: {
+        type: "subscription",
+        plan: "pro",
+        technicianEmail: req.user.email,
+        technicianId: req.user.id,
+      },
+      success_url: `${clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}&type=subscription`,
+      cancel_url: `${clientUrl}/payment/cancel?plan=1`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      url: session.url,
+      sessionId: session.id,
+    });
+  } catch (error) {
+    console.error("Create subscription checkout error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to start the Pro plan checkout.",
+    });
+  }
+});
+
 // VERIFY A CHECKOUT SESSION AFTER THE STRIPE REDIRECT
-router.get("/verify", verifyCustomer, async (req, res) => {
+router.get("/verify", verifyToken, async (req, res) => {
   try {
     const stripe = getStripe();
 
@@ -180,12 +251,7 @@ router.get("/verify", verifyCustomer, async (req, res) => {
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (session.metadata?.customerEmail !== req.user.email) {
-      return res.status(403).json({
-        success: false,
-        message: "This payment does not belong to you.",
-      });
-    }
+    const meta = session.metadata || {};
 
     if (session.payment_status !== "paid") {
       return res.status(409).json({
@@ -194,13 +260,66 @@ router.get("/verify", verifyCustomer, async (req, res) => {
       });
     }
 
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    // Pro plan checkout: activate the plan for the technician.
+    if (meta.type === "subscription") {
+      if (meta.technicianEmail !== req.user.email) {
+        return res.status(403).json({
+          success: false,
+          message: "This payment does not belong to you.",
+        });
+      }
+
+      const activation = await activateProPlan({
+        technicianEmail: meta.technicianEmail,
+        technicianId: meta.technicianId,
+        stripeSessionId: session.id,
+        paymentIntentId,
+        amount: session.amount_total ? session.amount_total / 100 : undefined,
+        currency: session.currency,
+      });
+
+      if (!activation.paid) {
+        return res.status(409).json({
+          success: false,
+          message: "The Pro plan could not be activated.",
+        });
+      }
+
+      const db = getDB();
+      const payment = await db
+        .collection("payments")
+        .findOne({ stripeSessionId: session.id });
+      const user = await db
+        .collection("users")
+        .findOne(
+          { email: req.user.email },
+          { projection: { plan: 1, name: 1, email: 1 } }
+        );
+
+      return res.status(200).json({
+        success: true,
+        message: "FixMate Pro activated.",
+        plan: user?.plan || "pro",
+        payment,
+      });
+    }
+
+    if (meta.customerEmail !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: "This payment does not belong to you.",
+      });
+    }
+
     const result = await markBookingPaid({
-      bookingId: session.metadata?.bookingId,
+      bookingId: meta.bookingId,
       stripeSessionId: session.id,
-      paymentIntentId:
-        typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id,
+      paymentIntentId,
       amount: session.amount_total ? session.amount_total / 100 : undefined,
       currency: session.currency,
     });

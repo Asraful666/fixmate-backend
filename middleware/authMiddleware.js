@@ -78,6 +78,22 @@ const verifyToken = async (req, res, next) => {
 
     req.auth = payload;
 
+    // Google sign-ups skip the email sign-up hook, so make sure a missing
+    // role (and plan) still resolves to the safe defaults and is persisted.
+    if (!user.role || !user.plan) {
+      const defaults = {
+        role: user.role || "customer",
+        plan: user.plan || "free",
+      };
+
+      await getDB()
+        .collection("users")
+        .updateOne({ _id: user._id }, { $set: defaults });
+
+      user.role = defaults.role;
+      user.plan = defaults.plan;
+    }
+
     // Load the role from MongoDB on every request instead of trusting
     // the token, so role changes and deleted accounts take effect at once.
     req.user = {
@@ -86,6 +102,7 @@ const verifyToken = async (req, res, next) => {
       email: user.email || "",
       image: user.image || "",
       role: user.role || "customer",
+      plan: user.plan || "free",
       phone: user.phone || "",
       area: user.area || "",
       bio: user.bio || "",

@@ -205,6 +205,12 @@ router.post("/", verifyCustomer, async (req, res) => {
       status: "requested",
       finalAmount: service.basePrice,
       paymentStatus: "unpaid",
+      statusHistory: [
+        { status: "requested", changedAt: now, note: "Repair request sent." },
+      ],
+      rating: null,
+      review: "",
+      reviewedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -264,7 +270,16 @@ router.patch("/:id/cancel", verifyCustomer, async (req, res) => {
 
     await bookings.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { status: "cancelled", updatedAt: new Date() } }
+      {
+        $set: { status: "cancelled", updatedAt: new Date() },
+        $push: {
+          statusHistory: {
+            status: "cancelled",
+            changedAt: new Date(),
+            note: "Cancelled by the customer.",
+          },
+        },
+      }
     );
 
     return res.status(200).json({
@@ -348,7 +363,24 @@ router.patch("/:id/status", verifyTechnician, async (req, res) => {
       updates.finalAmount = amount;
     }
 
-    await bookings.updateOne({ _id: new ObjectId(id) }, { $set: updates });
+    await bookings.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: updates,
+        $push: {
+          statusHistory: {
+            status,
+            changedAt: updates.updatedAt,
+            note:
+              status === "rejected"
+                ? updates.rejectionReason || "Rejected by the technician."
+                : status === "completed"
+                  ? `Completed with a final amount of $${updates.finalAmount}.`
+                  : `Moved to ${status} by the technician.`,
+          },
+        },
+      }
+    );
 
     return res.status(200).json({
       success: true,
@@ -362,6 +394,102 @@ router.patch("/:id/status", verifyTechnician, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update booking status.",
+    });
+  }
+});
+
+// RATE A PAID JOB (customer, once per booking)
+router.patch("/:id/review", verifyCustomer, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, review } = req.body || {};
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID.",
+      });
+    }
+
+    const ratingValue = Number(rating);
+
+    if (
+      !Number.isInteger(ratingValue) ||
+      ratingValue < 1 ||
+      ratingValue > 5
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be a whole number between 1 and 5.",
+      });
+    }
+
+    if (typeof review === "string" && review.trim().length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: "Review must be 500 characters or fewer.",
+      });
+    }
+
+    const bookings = getDB().collection("bookings");
+    const booking = await bookings.findOne({ _id: new ObjectId(id) });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found.",
+      });
+    }
+
+    if (booking.customerEmail !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only review your own bookings.",
+      });
+    }
+
+    // Reviews unlock only after the job is paid, so fake reviews cannot
+    // inflate a service's average.
+    if (booking.paymentStatus !== "paid") {
+      return res.status(409).json({
+        success: false,
+        message: "You can review a service after paying for the job.",
+      });
+    }
+
+    if (booking.rating) {
+      return res.status(409).json({
+        success: false,
+        message: "This booking already has a review.",
+      });
+    }
+
+    const now = new Date();
+
+    await bookings.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          rating: ratingValue,
+          review: typeof review === "string" ? review.trim() : "",
+          reviewedAt: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Thanks for your review!",
+      rating: ratingValue,
+      review: typeof review === "string" ? review.trim() : "",
+    });
+  } catch (error) {
+    console.error("Review booking error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save the review.",
     });
   }
 });

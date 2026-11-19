@@ -72,10 +72,87 @@ const markBookingPaid = async ({
 
   await bookings.updateOne(
     { _id: new ObjectId(bookingId) },
-    { $set: { paymentStatus: "paid", updatedAt: now } }
+    {
+      $set: { paymentStatus: "paid", updatedAt: now },
+      $push: {
+        statusHistory: {
+          status: "paid",
+          changedAt: now,
+          note: "Payment completed with Stripe.",
+        },
+      },
+    }
   );
 
   return { paid: true, alreadyPaid: false };
 };
 
-module.exports = { markBookingPaid };
+// Activates the FixMate Pro plan for a technician after a Stripe subscription
+// payment and records the transaction in the payments collection.
+const activateProPlan = async ({
+  technicianEmail,
+  technicianId,
+  stripeSessionId,
+  paymentIntentId,
+  amount,
+  currency,
+}) => {
+  const db = getDB();
+  const payments = db.collection("payments");
+  const users = db.collection("users");
+
+  const existing = await payments.findOne({ stripeSessionId });
+
+  if (existing?.paymentStatus === "paid") {
+    return { paid: true, alreadyPaid: true };
+  }
+
+  const technician = await users.findOne({ email: technicianEmail });
+
+  if (!technician) {
+    return { paid: false, reason: "technician-not-found" };
+  }
+
+  const now = new Date();
+  const technicianObjectId = technician._id.toString();
+
+  await payments.updateOne(
+    { stripeSessionId },
+    {
+      $set: {
+        paymentType: "subscription",
+        plan: "pro",
+        serviceTitle: "FixMate Pro Plan (monthly)",
+        technicianId: technicianObjectId,
+        technicianName: technician.name || "",
+        technicianEmail,
+        customerId: technicianObjectId,
+        customerName: technician.name || "",
+        customerEmail: technicianEmail,
+        amount: Number(amount) || 0,
+        currency: currency || "usd",
+        paymentStatus: "paid",
+        transactionId: paymentIntentId || stripeSessionId || null,
+        paidAt: now,
+        updatedAt: now,
+      },
+      $setOnInsert: { createdAt: now },
+    },
+    { upsert: true }
+  );
+
+  await users.updateOne(
+    { _id: technician._id },
+    { $set: { plan: "pro", updatedAt: now } }
+  );
+
+  // The public cards read the badge from the service document.
+  await db.collection("services").updateMany(
+    { technicianId: technicianId || technicianObjectId },
+    { $set: { technicianPlan: "pro", updatedAt: now } }
+  );
+
+  return { paid: true, alreadyPaid: false };
+};
+
+module.exports = { markBookingPaid, activateProPlan };

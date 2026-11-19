@@ -110,6 +110,7 @@ router.get("/users", async (req, res) => {
         email: user.email || "",
         image: user.image || "",
         role: user.role || "customer",
+        plan: user.plan || "free",
         phone: user.phone || "",
         area: user.area || "",
         bio: user.bio || "",

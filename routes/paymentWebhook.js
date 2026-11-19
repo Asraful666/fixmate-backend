@@ -1,5 +1,5 @@
 const { getStripe } = require("../utils/stripe");
-const { markBookingPaid } = require("../utils/payments");
+const { markBookingPaid, activateProPlan } = require("../utils/payments");
 
 // Mounted before express.json() so Stripe can verify the raw body.
 const handleStripeWebhook = async (req, res) => {
@@ -40,16 +40,30 @@ const handleStripeWebhook = async (req, res) => {
       const session = event.data.object;
 
       if (session.payment_status === "paid") {
-        await markBookingPaid({
-          bookingId: session.metadata?.bookingId,
-          stripeSessionId: session.id,
-          paymentIntentId:
-            typeof session.payment_intent === "string"
-              ? session.payment_intent
-              : session.payment_intent?.id,
-          amount: session.amount_total ? session.amount_total / 100 : undefined,
-          currency: session.currency,
-        });
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id;
+
+        // Pro plan subscription payments activate the technician plan.
+        if (session.metadata?.type === "subscription") {
+          await activateProPlan({
+            technicianEmail: session.metadata.technicianEmail,
+            technicianId: session.metadata.technicianId,
+            stripeSessionId: session.id,
+            paymentIntentId,
+            amount: session.amount_total ? session.amount_total / 100 : undefined,
+            currency: session.currency,
+          });
+        } else {
+          await markBookingPaid({
+            bookingId: session.metadata?.bookingId,
+            stripeSessionId: session.id,
+            paymentIntentId,
+            amount: session.amount_total ? session.amount_total / 100 : undefined,
+            currency: session.currency,
+          });
+        }
       }
     }
 
