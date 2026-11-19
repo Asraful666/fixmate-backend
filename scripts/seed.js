@@ -86,6 +86,8 @@ const buildUsers = () =>
       phone: "+8801700000000",
       area: "Dhaka",
       bio: "FixMate platform administrator.",
+      image:
+        "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&h=200&fit=crop",
     },
     {
       _id: new ObjectId(ids.customer),
@@ -96,6 +98,8 @@ const buildUsers = () =>
       phone: "+8801700000001",
       area: "Dhanmondi, Dhaka",
       bio: "",
+      image:
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
     },
     {
       _id: new ObjectId(ids.rahim),
@@ -107,6 +111,8 @@ const buildUsers = () =>
       phone: "+8801700000002",
       area: "Dhanmondi, Dhaka",
       bio: "Certified technician with 8 years of experience in smartphones, laptops and home appliances.",
+      image:
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop",
     },
     {
       _id: new ObjectId(ids.karim),
@@ -117,13 +123,15 @@ const buildUsers = () =>
       phone: "+8801700000003",
       area: "Mirpur, Dhaka",
       bio: "AC, refrigerator and electrical repair specialist serving Dhaka since 2015.",
+      image:
+        "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&h=200&fit=crop",
     },
   ].map((user) => {
     const now = new Date();
     return {
       ...user,
       plan: user.plan || "free",
-      image: "",
+      image: user.image || "",
       createdAt: now,
       updatedAt: now,
     };
