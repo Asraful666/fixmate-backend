@@ -10,6 +10,7 @@ const initializeCollections = require("./database/collections");
 const initializeIndexes = require("./database/indexes");
 
 const servicesRoutes = require("./routes/services");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 
@@ -32,6 +33,9 @@ app.get("/api/health", (req, res) => {
     message: "FixMate Backend Server is running!",
   });
 });
+
+// Protected Auth API
+app.use("/api/auth", authRoutes);
 
 // Public Services API
 app.use("/api/services", servicesRoutes);
