@@ -47,7 +47,7 @@ router.get("/me", verifyToken, async (req, res) => {
 });
 
 // UPDATE OWN PROFILE (role is intentionally not writable here)
-router.patch("/me", verifyToken, async (req, res) => {
+const updateOwnProfile = async (req, res) => {
   try {
     const { name, phone, area, bio, image } = req.body || {};
 
@@ -68,7 +68,10 @@ router.patch("/me", verifyToken, async (req, res) => {
 
     const users = getDB().collection("users");
 
-    await users.updateOne({ _id: new ObjectId(req.user.id) }, { $set: updates });
+    await users.updateOne(
+      { _id: new ObjectId(req.user.id) },
+      { $set: updates }
+    );
 
     const user = await users.findOne({ _id: new ObjectId(req.user.id) });
 
@@ -85,7 +88,11 @@ router.patch("/me", verifyToken, async (req, res) => {
       message: "Failed to update profile.",
     });
   }
-});
+};
+
+// The assignment references PATCH /api/users/profile; /me stays as an alias.
+router.patch("/profile", verifyToken, updateOwnProfile);
+router.patch("/me", verifyToken, updateOwnProfile);
 
 // PUBLIC TECHNICIAN PROFILE (used by service details)
 router.get("/technician/:id", async (req, res) => {

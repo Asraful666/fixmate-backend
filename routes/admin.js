@@ -42,7 +42,7 @@ router.get("/stats", async (req, res) => {
     const revenue = await db
       .collection("payments")
       .aggregate([
-        { $match: { status: "paid" } },
+        { $match: { paymentStatus: "paid" } },
         { $group: { _id: null, total: { $sum: "$amount" } } },
       ])
       .toArray();
@@ -70,6 +70,58 @@ router.get("/stats", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to load dashboard statistics.",
+    });
+  }
+});
+
+// ADMIN: LIST USERS (assignment route: GET /api/admin/users)
+router.get("/users", async (req, res) => {
+  try {
+    const { role = "", search = "" } = req.query;
+    const filter = {};
+
+    if (["customer", "technician", "admin"].includes(role)) {
+      filter.role = role;
+    }
+
+    if (String(search).trim()) {
+      const escaped = String(search)
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      filter.$or = [
+        { name: { $regex: escaped, $options: "i" } },
+        { email: { $regex: escaped, $options: "i" } },
+      ];
+    }
+
+    const users = await getDB()
+      .collection("users")
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      total: users.length,
+      users: users.map((user) => ({
+        id: user._id.toString(),
+        name: user.name || "",
+        email: user.email || "",
+        image: user.image || "",
+        role: user.role || "customer",
+        phone: user.phone || "",
+        area: user.area || "",
+        bio: user.bio || "",
+        createdAt: user.createdAt || null,
+      })),
+    });
+  } catch (error) {
+    console.error("Admin users error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load users.",
     });
   }
 });
