@@ -1,8 +1,48 @@
-# FixMate Backend
+# FixMate Backend — Repair Service API
 
-Express 5 + MongoDB API for FixMate, a home repair service marketplace.
-It verifies BetterAuth JWTs with the BetterAuth JWKS endpoint and enforces
-customer, technician and admin roles on every protected route.
+Express 5 + MongoDB API for **FixMate**, a smart device and home appliance
+repair service booking platform. It verifies BetterAuth JWTs with the BetterAuth
+JWKS endpoint and enforces customer, technician and admin roles on every
+protected route.
+
+## Live API
+
+- API base URL: `https://fixmate-api.onrender.com/api` **(replace with your deployed URL)**
+- Local: `http://localhost:5000/api`
+- Health check: `GET /api/health`
+
+## Admin Credentials
+
+| Email | Password |
+|---|---|
+| `admin@fixmate.test` | `Demo@1234` |
+
+## Key Features
+
+- JWT verification through the BetterAuth JWKS endpoint (`jose`, EdDSA).
+- Role guards that always authenticate before checking customer / technician /
+  admin permissions.
+- Server-side search, category/mode filter and sorting for public services.
+- Service moderation: technicians submit services as `pending`; only
+  `approved` + `available` services appear publicly.
+- Booking pipeline enforced on the server:
+  `requested → accepted → in-progress → completed`,
+  `requested → rejected`, and customer cancel only while `requested`.
+- Final amount is required when completing a job; payment is gated to
+  `completed` + `unpaid` bookings.
+- Stripe Checkout sessions use the server-side `finalAmount` (never a client
+  amount), with idempotent payment recording from both the success redirect and
+  the signed webhook.
+- Demo seed with 2 technicians, 14 approved services across 7 categories and
+  bookings in every main status.
+
+## npm Packages Used
+
+- `express`, `cors`, `dotenv`
+- `mongodb`
+- `jose`
+- `stripe`
+- `nodemon` (development)
 
 ## Tech Stack
 
@@ -85,13 +125,14 @@ it against production data.
 |---|---|---|
 | POST | `/api/bookings` | Create a booking for an approved service |
 | GET | `/api/bookings/my` | List own bookings |
-| PATCH | `/api/bookings/:id/cancel` | Cancel a `requested` or `accepted` booking |
+| PATCH | `/api/bookings/:id/cancel` | Cancel your own booking (only while `requested`) |
 | GET | `/api/bookings/:id` | Booking details (owner, technician or admin) |
-| POST | `/api/payments/create-checkout` | Stripe Checkout for a completed, unpaid booking |
+| POST | `/api/payments/create-checkout-session` | Stripe Checkout for a completed, unpaid booking |
+| POST | `/api/payments/create-checkout` | Short alias of the same endpoint |
 | GET | `/api/payments/verify?session_id=` | Verify a Stripe session after redirect |
 | GET | `/api/payments/my` | Own payment history |
 | GET | `/api/users/me` | Own profile |
-| PATCH | `/api/users/me` | Update name, phone, area, bio, image (role is not writable) |
+| PATCH | `/api/users/profile` | Update name, phone, area, bio, image (alias: `/api/users/me`) |
 
 ### Technician (JWT + technician role)
 
@@ -110,11 +151,12 @@ it against production data.
 | Method | Route | Description |
 |---|---|---|
 | GET | `/api/admin/stats` | Counts, users by role, revenue |
+| GET | `/api/admin/users` | List users with optional `role` / `search` filters |
 | GET | `/api/admin/services` | All services; filter with `approvalStatus` |
 | PATCH | `/api/admin/services/:id/approval` | Approve or reject a service |
 | GET | `/api/admin/bookings` | All bookings; filter with `status` |
 | GET | `/api/admin/payments` | All payments |
-| GET | `/api/users` | List users (admin guard) |
+| GET | `/api/users` | Legacy user list (admin guard) |
 | PATCH | `/api/admin/users/:id/role` | Change a user role (not your own) |
 
 ## Business Rules
@@ -124,10 +166,12 @@ it against production data.
 - Editing a service sends it back to `pending` approval.
 - Technicians can only edit/delete their own services and update bookings
   that belong to their own services.
-- Customers can only see and cancel their own bookings.
+- Customers can only see and cancel their own bookings, and only while the
+  booking is still `requested`.
 - Booking flow:
   `requested → accepted → in-progress → completed`
-  with `requested → rejected` and `requested/accepted → cancelled`.
+  with `requested → rejected` and `requested → cancelled`.
+- Completing a job requires `finalAmount > 0`; it becomes the payable amount.
 - A customer cannot create a second active booking for the same service.
 - Payment is only possible when the booking is `completed` and `unpaid`.
 - Payment updates are idempotent: the redirect verifier and the webhook cannot
