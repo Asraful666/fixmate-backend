@@ -172,7 +172,7 @@ const services = [
     description:
       "Keyboard replacement for popular laptop brands with same-day fitting when the part is in stock.",
     image: images.laptop,
-    technician: "karim",
+    technician: "rahim",
     basePrice: 45,
     serviceMode: "Shop Drop-off",
     estimatedDuration: "2-3 hours",
@@ -196,7 +196,7 @@ const services = [
     description:
       "Professional split AC installation including bracket fitting, pipe routing, and leak testing.",
     image: images.ac,
-    technician: "karim",
+    technician: "rahim",
     basePrice: 95,
     serviceMode: "Home Visit",
     estimatedDuration: "3-4 hours",
@@ -220,7 +220,7 @@ const services = [
     description:
       "Compressor testing, replacement, and relay repair for all major refrigerator brands.",
     image: images.refrigerator,
-    technician: "karim",
+    technician: "rahim",
     basePrice: 120,
     serviceMode: "Home Visit",
     estimatedDuration: "1 day",
@@ -244,7 +244,7 @@ const services = [
     description:
       "Secure wall mount installation for 32 to 65 inch TVs including bracket and cable management.",
     image: images.tv,
-    technician: "karim",
+    technician: "rahim",
     basePrice: 40,
     serviceMode: "Home Visit",
     estimatedDuration: "1-2 hours",
@@ -304,7 +304,7 @@ const services = [
     description:
       "Heating and control panel repair for microwave ovens. Currently under admin review.",
     image: images.electrical,
-    technician: "karim",
+    technician: "rahim",
     basePrice: 65,
     serviceMode: "Shop Drop-off",
     estimatedDuration: "1-2 days",
