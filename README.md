@@ -7,10 +7,15 @@ protected route.
 
 ## Live API
 
-- API base URL: `https://fixmate-api.onrender.com/api` **(replace with your deployed URL)**
+- API base URL: https://fixmate-backend-taupe.vercel.app/api
 - Local: `http://localhost:5000/api`
-- Health check: `GET /api/health`
+- Health check: https://fixmate-backend-taupe.vercel.app/api/health
 - Repository: https://github.com/Asraful666/fixmate-backend
+
+> Deployed on Vercel as a serverless Express function: `app.js` builds the
+> Express app, `index.js` only starts the local listener, and
+> `api/index.js` + `vercel.json` expose the app for Vercel. The MongoDB
+> connection is cached per warm container.
 
 ## Admin Credentials
 
@@ -221,16 +226,27 @@ verified against the raw body.
 
 ## Production Deployment Checklist
 
-- [ ] Create a MongoDB Atlas database and allow the API host IP.
-- [ ] Set every variable from the table above on the API host (Render/Railway/Fly).
-- [ ] Set `CLIENT_URL` to the deployed frontend URL and `CORS_ORIGINS` if needed.
-- [ ] Keep `BETTER_AUTH_URL` identical to the frontend `BETTER_AUTH_URL`.
+- [x] Create a MongoDB Atlas database and allow the API host IP.
+- [x] Set every variable from the table above on the API host (Vercel).
+- [x] Set `CLIENT_URL` to the deployed frontend URL and `CORS_ORIGINS` if needed.
+- [x] Keep `BETTER_AUTH_URL` identical to the frontend `BETTER_AUTH_URL`.
 - [ ] Add the production Stripe webhook endpoint
-      `https://<api-host>/api/payments/webhook` and copy its signing secret.
+      `https://fixmate-backend-taupe.vercel.app/api/payments/webhook` and copy
+      its signing secret.
 - [ ] Use Stripe test keys for the assignment demo; only switch to live keys
       after review.
-- [ ] Run `npm run seed` once against the demo database if demo content is needed.
-- [ ] Confirm `GET /api/health` returns 200 from the deployed URL.
+- [x] Run `npm run seed` once against the demo database if demo content is needed.
+- [x] Confirm `GET /api/health` returns 200 from the deployed URL.
+
+### Deploying to Vercel
+
+```bash
+vercel --prod            # from fixmate-backend
+```
+
+`api/index.js` bootstraps MongoDB (collection + index setup) once per container,
+then delegates each request to the Express app in `app.js`. Local behaviour is
+unchanged: `npm run dev` still calls `index.js` and listens on port 5000.
 
 ## Scripts
 

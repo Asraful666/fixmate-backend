@@ -13,3 +13,7 @@ CLAUDE.md
 GEMINI.md
 .cursorrules
 .cursor/rules/
+
+# vercel local link
+.vercel/
+.vercel
