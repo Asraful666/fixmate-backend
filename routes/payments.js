@@ -16,15 +16,6 @@ const router = express.Router();
 // CREATE A STRIPE CHECKOUT SESSION FOR A COMPLETED, UNPAID BOOKING
 const createCheckoutSession = async (req, res) => {
   try {
-    const stripe = getStripe();
-
-    if (!stripe) {
-      return res.status(503).json({
-        success: false,
-        message: "Stripe is not configured on the server yet.",
-      });
-    }
-
     const { bookingId } = req.body || {};
 
     if (!isValidObjectId(bookingId)) {
@@ -88,6 +79,17 @@ const createCheckoutSession = async (req, res) => {
       return res.status(409).json({
         success: false,
         message: "This booking has no payable amount yet.",
+      });
+    }
+
+    // Validate the booking before touching Stripe so the API always answers
+    // with the real reason (404/403/409), even when keys are not set yet.
+    const stripe = getStripe();
+
+    if (!stripe) {
+      return res.status(503).json({
+        success: false,
+        message: "Stripe is not configured on the server yet.",
       });
     }
 
