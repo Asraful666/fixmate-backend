@@ -10,6 +10,7 @@ protected route.
 - API base URL: `https://fixmate-api.onrender.com/api` **(replace with your deployed URL)**
 - Local: `http://localhost:5000/api`
 - Health check: `GET /api/health`
+- Repository: https://github.com/Asraful666/fixmate-backend
 
 ## Admin Credentials
 
