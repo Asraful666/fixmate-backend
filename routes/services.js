@@ -93,6 +93,10 @@ const validateServicePayload = (payload) => {
     return "Service description is required.";
   }
 
+  if (!isNonEmptyString(payload.image)) {
+    return "Service image is required.";
+  }
+
   if (payload.basePrice === null) {
     return "Base price must be a positive number.";
   }
