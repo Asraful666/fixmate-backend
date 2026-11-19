@@ -120,9 +120,12 @@ const requireRole = (...roles) => (req, res, next) => {
   return next();
 };
 
-const verifyCustomer = requireRole("customer");
-const verifyTechnician = requireRole("technician");
-const verifyAdmin = requireRole("admin");
+// Convenience guards that always authenticate before checking the role.
+// Express accepts arrays of middleware, so these can be used directly:
+//   router.get("/path", verifyCustomer, handler)
+const verifyCustomer = [verifyToken, requireRole("customer")];
+const verifyTechnician = [verifyToken, requireRole("technician")];
+const verifyAdmin = [verifyToken, requireRole("admin")];
 
 module.exports = {
   verifyToken,
