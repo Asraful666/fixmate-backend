@@ -5,12 +5,12 @@ const { getDB } = require("../config/db");
 const { verifyCustomer } = require("../middleware/authMiddleware");
 const { getStripe, getClientUrl } = require("../utils/stripe");
 const { markBookingPaid } = require("../utils/payments");
-const { isValidObjectId } = require("../utils/validation");
+const { isValidObjectId, toPositiveNumber } = require("../utils/validation");
 
 const router = express.Router();
 
 // CREATE A STRIPE CHECKOUT SESSION FOR A COMPLETED, UNPAID BOOKING
-router.post("/create-checkout", verifyCustomer, async (req, res) => {
+const createCheckoutSession = async (req, res) => {
   try {
     const stripe = getStripe();
 
@@ -42,13 +42,14 @@ router.post("/create-checkout", verifyCustomer, async (req, res) => {
       });
     }
 
-    if (booking.customerId !== req.user.id) {
+    if (booking.customerEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
         message: "You can only pay for your own bookings.",
       });
     }
 
+    // Payment gate: completed + unpaid only.
     if (booking.status !== "completed") {
       return res.status(409).json({
         success: false,
@@ -67,15 +68,26 @@ router.post("/create-checkout", verifyCustomer, async (req, res) => {
       .collection("payments")
       .findOne({ bookingId });
 
-    if (existingPayment?.status === "paid") {
+    if (existingPayment?.paymentStatus === "paid") {
       return res.status(409).json({
         success: false,
         message: "This booking is already paid.",
       });
     }
 
+    // Never trust an amount from the client: use the completed final amount.
+    const amount = toPositiveNumber(
+      booking.finalAmount ?? booking.basePrice
+    );
+
+    if (amount === null) {
+      return res.status(409).json({
+        success: false,
+        message: "This booking has no payable amount yet.",
+      });
+    }
+
     const clientUrl = getClientUrl();
-    const amount = Number(booking.price);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -96,7 +108,7 @@ router.post("/create-checkout", verifyCustomer, async (req, res) => {
       ],
       metadata: {
         bookingId,
-        customerId: req.user.id,
+        customerEmail: booking.customerEmail,
       },
       success_url: `${clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${clientUrl}/payment/cancel?booking_id=${bookingId}`,
@@ -109,11 +121,14 @@ router.post("/create-checkout", verifyCustomer, async (req, res) => {
       {
         $set: {
           bookingId,
-          customerId: req.user.id,
-          technicianId: booking.technicianId,
+          serviceTitle: booking.serviceTitle,
+          customerName: booking.customerName,
+          customerEmail: booking.customerEmail,
+          technicianName: booking.technicianName,
+          technicianEmail: booking.technicianEmail,
           amount,
           currency: "usd",
-          status: "unpaid",
+          paymentStatus: "unpaid",
           stripeSessionId: session.id,
           updatedAt: now,
         },
@@ -135,7 +150,12 @@ router.post("/create-checkout", verifyCustomer, async (req, res) => {
       message: "Failed to start the payment.",
     });
   }
-});
+};
+
+// The assignment names the API /create-checkout-session; keep the short
+// alias so older clients keep working.
+router.post("/create-checkout-session", verifyCustomer, createCheckoutSession);
+router.post("/create-checkout", verifyCustomer, createCheckoutSession);
 
 // VERIFY A CHECKOUT SESSION AFTER THE STRIPE REDIRECT
 router.get("/verify", verifyCustomer, async (req, res) => {
@@ -160,7 +180,7 @@ router.get("/verify", verifyCustomer, async (req, res) => {
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    if (session.metadata?.customerId !== req.user.id) {
+    if (session.metadata?.customerEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
         message: "This payment does not belong to you.",
@@ -221,8 +241,8 @@ router.get("/my", verifyCustomer, async (req, res) => {
   try {
     const payments = await getDB()
       .collection("payments")
-      .find({ customerId: req.user.id })
-      .sort({ createdAt: -1 })
+      .find({ customerEmail: req.user.email })
+      .sort({ paidAt: -1, createdAt: -1 })
       .toArray();
 
     return res.status(200).json({

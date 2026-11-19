@@ -181,6 +181,7 @@ router.post("/", verifyTechnician, async (req, res) => {
       ...payload,
       technicianId: req.user.id,
       technicianName: req.user.name,
+      technicianEmail: req.user.email,
       approvalStatus: "pending",
       isAvailable: true,
       createdAt: now,
@@ -232,7 +233,14 @@ router.get("/:id", async (req, res) => {
     // Include a public technician profile for the details page.
     let technician = null;
 
-    if (service.technicianId && isValidObjectId(service.technicianId)) {
+    if (service.technicianEmail) {
+      technician = await getDB().collection("users").findOne(
+        { email: service.technicianEmail },
+        { projection: { name: 1, image: 1, bio: 1, area: 1, role: 1 } }
+      );
+    }
+
+    if (!technician && service.technicianId && isValidObjectId(service.technicianId)) {
       technician = await getDB().collection("users").findOne(
         { _id: new ObjectId(service.technicianId) },
         { projection: { name: 1, image: 1, bio: 1, area: 1, role: 1 } }

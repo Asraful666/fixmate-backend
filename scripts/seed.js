@@ -29,12 +29,17 @@ const PASSWORD_CONFIG = {
 // Matches BetterAuth's credential password hashing (salt:key).
 const hashPassword = async (password) => {
   const salt = randomBytes(16).toString("hex");
-  const key = await scryptAsync(password.normalize("NFKC"), salt, PASSWORD_CONFIG.dkLen, {
-    N: PASSWORD_CONFIG.N,
-    r: PASSWORD_CONFIG.r,
-    p: PASSWORD_CONFIG.p,
-    maxmem: 128 * PASSWORD_CONFIG.N * PASSWORD_CONFIG.r * 2,
-  });
+  const key = await scryptAsync(
+    password.normalize("NFKC"),
+    salt,
+    PASSWORD_CONFIG.dkLen,
+    {
+      N: PASSWORD_CONFIG.N,
+      r: PASSWORD_CONFIG.r,
+      p: PASSWORD_CONFIG.p,
+      maxmem: 128 * PASSWORD_CONFIG.N * PASSWORD_CONFIG.r * 2,
+    }
+  );
 
   return `${salt}:${key.toString("hex")}`;
 };
@@ -70,56 +75,57 @@ const daysFromNow = (days) => {
   return date;
 };
 
-const buildUsers = () => [
-  {
-    _id: new ObjectId(ids.admin),
-    name: "FixMate Admin",
-    email: "admin@fixmate.test",
-    emailVerified: true,
-    role: "admin",
-    phone: "+8801700000000",
-    area: "Dhaka",
-    bio: "FixMate platform administrator.",
-  },
-  {
-    _id: new ObjectId(ids.customer),
-    name: "Arif Hasan",
-    email: "customer@fixmate.test",
-    emailVerified: true,
-    role: "customer",
-    phone: "+8801700000001",
-    area: "Dhanmondi, Dhaka",
-    bio: "",
-  },
-  {
-    _id: new ObjectId(ids.rahim),
-    name: "Rahim Ahmed",
-    email: "rahim@fixmate.test",
-    emailVerified: true,
-    role: "technician",
-    phone: "+8801700000002",
-    area: "Dhanmondi, Dhaka",
-    bio: "Certified technician with 8 years of experience in smartphones, laptops and home appliances.",
-  },
-  {
-    _id: new ObjectId(ids.karim),
-    name: "Karim Uddin",
-    email: "karim@fixmate.test",
-    emailVerified: true,
-    role: "technician",
-    phone: "+8801700000003",
-    area: "Mirpur, Dhaka",
-    bio: "AC, refrigerator and electrical repair specialist serving Dhaka since 2015.",
-  },
-].map((user) => {
-  const now = new Date();
-  return {
-    ...user,
-    image: "",
-    createdAt: now,
-    updatedAt: now,
-  };
-});
+const buildUsers = () =>
+  [
+    {
+      _id: new ObjectId(ids.admin),
+      name: "FixMate Admin",
+      email: "admin@fixmate.test",
+      emailVerified: true,
+      role: "admin",
+      phone: "+8801700000000",
+      area: "Dhaka",
+      bio: "FixMate platform administrator.",
+    },
+    {
+      _id: new ObjectId(ids.customer),
+      name: "Arif Hasan",
+      email: "customer@fixmate.test",
+      emailVerified: true,
+      role: "customer",
+      phone: "+8801700000001",
+      area: "Dhanmondi, Dhaka",
+      bio: "",
+    },
+    {
+      _id: new ObjectId(ids.rahim),
+      name: "Rahim Ahmed",
+      email: "rahim@fixmate.test",
+      emailVerified: true,
+      role: "technician",
+      phone: "+8801700000002",
+      area: "Dhanmondi, Dhaka",
+      bio: "Certified technician with 8 years of experience in smartphones, laptops and home appliances.",
+    },
+    {
+      _id: new ObjectId(ids.karim),
+      name: "Karim Uddin",
+      email: "karim@fixmate.test",
+      emailVerified: true,
+      role: "technician",
+      phone: "+8801700000003",
+      area: "Mirpur, Dhaka",
+      bio: "AC, refrigerator and electrical repair specialist serving Dhaka since 2015.",
+    },
+  ].map((user) => {
+    const now = new Date();
+    return {
+      ...user,
+      image: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
 
 const services = [
   {
@@ -335,6 +341,7 @@ const buildServices = (usersById) => {
       image: service.image,
       technicianId: technician._id.toString(),
       technicianName: technician.name,
+      technicianEmail: technician.email,
       basePrice: service.basePrice,
       serviceMode: service.serviceMode,
       estimatedDuration: service.estimatedDuration,
@@ -354,7 +361,7 @@ const buildBookings = (usersById, servicesByTitle) => {
     index,
     serviceTitle,
     status,
-    bookingDate,
+    preferredDate,
     createdDaysAgo,
     paymentStatus = "unpaid",
     rejectionReason = "",
@@ -366,22 +373,26 @@ const buildBookings = (usersById, servicesByTitle) => {
       _id: new ObjectId(
         `6a000000000000000000${String(201 + index).padStart(4, "0")}`
       ),
+      serviceId: service._id.toString(),
+      serviceTitle: service.title,
+      serviceImage: service.image,
+      category: service.category,
+      serviceMode: service.serviceMode,
+      serviceArea: service.serviceArea,
+      basePrice: service.basePrice,
+      technicianId: technician._id.toString(),
+      technicianName: technician.name,
+      technicianEmail: technician.email,
       customerId: customer._id.toString(),
       customerName: customer.name,
       customerEmail: customer.email,
       customerPhone: customer.phone,
-      technicianId: technician._id.toString(),
-      technicianName: technician.name,
-      serviceId: service._id.toString(),
-      serviceTitle: service.title,
-      serviceMode: service.serviceMode,
-      serviceArea: service.serviceArea,
-      price: service.basePrice,
-      bookingDate,
       address: "House 12, Road 4, Dhanmondi, Dhaka",
-      phone: customer.phone,
-      note: "Please call before arriving.",
+      preferredDate,
+      problemDescription:
+        "The device stopped working properly and needs a full inspection before any repair work starts.",
       status,
+      finalAmount: service.basePrice,
       paymentStatus,
       rejectionReason,
       createdAt: daysFromNow(-createdDaysAgo),
@@ -394,35 +405,35 @@ const buildBookings = (usersById, servicesByTitle) => {
       index: 0,
       serviceTitle: "iPhone Screen Replacement",
       status: "requested",
-      bookingDate: daysFromNow(3),
+      preferredDate: daysFromNow(3),
       createdDaysAgo: 1,
     }),
     makeBooking({
       index: 1,
       serviceTitle: "AC Servicing & Gas Refill",
       status: "accepted",
-      bookingDate: daysFromNow(5),
+      preferredDate: daysFromNow(5),
       createdDaysAgo: 2,
     }),
     makeBooking({
       index: 2,
       serviceTitle: "Laptop Hardware Diagnosis",
       status: "in-progress",
-      bookingDate: daysFromNow(0),
+      preferredDate: daysFromNow(0),
       createdDaysAgo: 3,
     }),
     makeBooking({
       index: 3,
       serviceTitle: "Refrigerator Gas Refill",
       status: "completed",
-      bookingDate: daysFromNow(-4),
+      preferredDate: daysFromNow(-4),
       createdDaysAgo: 8,
     }),
     makeBooking({
       index: 4,
       serviceTitle: "Washing Machine Drum Cleaning",
       status: "completed",
-      bookingDate: daysFromNow(-10),
+      preferredDate: daysFromNow(-10),
       createdDaysAgo: 14,
       paymentStatus: "paid",
     }),
@@ -430,7 +441,7 @@ const buildBookings = (usersById, servicesByTitle) => {
       index: 5,
       serviceTitle: "TV Screen Repair",
       status: "rejected",
-      bookingDate: daysFromNow(7),
+      preferredDate: daysFromNow(7),
       createdDaysAgo: 5,
       rejectionReason:
         "This TV model needs a panel that is currently out of stock.",
@@ -439,30 +450,31 @@ const buildBookings = (usersById, servicesByTitle) => {
       index: 6,
       serviceTitle: "Ceiling Fan Installation",
       status: "cancelled",
-      bookingDate: daysFromNow(2),
+      preferredDate: daysFromNow(2),
       createdDaysAgo: 4,
     }),
   ];
 };
 
-const buildPayment = (usersById, paidBooking) => {
-  const technician = usersById[paidBooking.technicianId === ids.rahim ? "rahim" : "karim"];
+const buildPayment = (paidBooking) => {
   const now = new Date();
 
   return {
     _id: new ObjectId("6a0000000000000000000301"),
     bookingId: paidBooking._id.toString(),
-    customerId: paidBooking.customerId,
-    technicianId: paidBooking.technicianId,
-    amount: paidBooking.price,
+    serviceTitle: paidBooking.serviceTitle,
+    customerName: paidBooking.customerName,
+    customerEmail: paidBooking.customerEmail,
+    technicianName: paidBooking.technicianName,
+    technicianEmail: paidBooking.technicianEmail,
+    amount: paidBooking.finalAmount,
     currency: "usd",
-    status: "paid",
-    stripeSessionId: "cs_test_seed_paid_001",
     transactionId: "pi_seed_paid_001",
+    stripeSessionId: "cs_test_seed_paid_001",
+    paymentStatus: "paid",
     paidAt: daysFromNow(-9),
     createdAt: daysFromNow(-10),
     updatedAt: now,
-    technicianName: technician.name,
   };
 };
 
@@ -504,14 +516,12 @@ const main = async () => {
         .deleteMany({ userId: { $in: demoUserIds } });
     }
 
-    await db
-      .collection("users")
-      .deleteMany({
-        $or: [
-          { email: { $regex: "@fixmate\\.test$" } },
-          { email: { $regex: "^jwt\\.test\\." } },
-        ],
-      });
+    await db.collection("users").deleteMany({
+      $or: [
+        { email: { $regex: "@fixmate\\.test$" } },
+        { email: { $regex: "^jwt\\.test\\." } },
+      ],
+    });
 
     await Promise.all([
       db.collection("payments").deleteMany({}),
@@ -574,9 +584,7 @@ const main = async () => {
       (booking) => booking.paymentStatus === "paid"
     );
 
-    await db.collection("payments").insertOne(
-      buildPayment(usersById, paidBooking)
-    );
+    await db.collection("payments").insertOne(buildPayment(paidBooking));
 
     console.log("Seed finished.");
     console.log(`Users: ${users.length} (2 technicians)`);

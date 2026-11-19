@@ -13,17 +13,36 @@ const {
   isNonEmptyString,
   parseDateOnly,
   startOfToday,
+  toPositiveNumber,
 } = require("../utils/validation");
 
 const router = express.Router();
 
-const pendingPayment = () => ({ paymentStatus: "unpaid" });
+const sortNewestFirst = { createdAt: -1 };
 
 const toObjectIds = (ids) =>
   ids.filter(isValidObjectId).map((id) => new ObjectId(id));
 
-// Small helper so every list response has the same shape.
-const sortNewestFirst = { createdAt: -1 };
+// Every booking list also carries the current service card data, so the UI
+// can render an image even before it fetches the service again.
+const attachServices = async (db, bookings) => {
+  if (bookings.length === 0) return [];
+
+  const services = await db
+    .collection("services")
+    .find({ _id: { $in: toObjectIds(bookings.map((item) => item.serviceId)) } })
+    .project({ title: 1, image: 1, category: 1, serviceMode: 1, serviceArea: 1 })
+    .toArray();
+
+  const serviceMap = new Map(
+    services.map((service) => [service._id.toString(), service])
+  );
+
+  return bookings.map((booking) => ({
+    ...booking,
+    service: serviceMap.get(booking.serviceId) || null,
+  }));
+};
 
 // GET BOOKINGS OF THE LOGGED-IN CUSTOMER
 router.get("/my", verifyCustomer, async (req, res) => {
@@ -32,29 +51,14 @@ router.get("/my", verifyCustomer, async (req, res) => {
 
     const bookings = await db
       .collection("bookings")
-      .find({ customerId: req.user.id })
+      .find({ customerEmail: req.user.email })
       .sort(sortNewestFirst)
       .toArray();
-
-    const services = await db
-      .collection("services")
-      .find({
-        _id: { $in: toObjectIds(bookings.map((booking) => booking.serviceId)) },
-      })
-      .project({ title: 1, image: 1, category: 1 })
-      .toArray();
-
-    const serviceMap = new Map(
-      services.map((service) => [service._id.toString(), service])
-    );
 
     return res.status(200).json({
       success: true,
       total: bookings.length,
-      bookings: bookings.map((booking) => ({
-        ...booking,
-        service: serviceMap.get(booking.serviceId) || null,
-      })),
+      bookings: await attachServices(db, bookings),
     });
   } catch (error) {
     console.error("Get my bookings error:", error);
@@ -73,29 +77,14 @@ router.get("/technician", verifyTechnician, async (req, res) => {
 
     const bookings = await db
       .collection("bookings")
-      .find({ technicianId: req.user.id })
+      .find({ technicianEmail: req.user.email })
       .sort(sortNewestFirst)
       .toArray();
-
-    const services = await db
-      .collection("services")
-      .find({
-        _id: { $in: toObjectIds(bookings.map((booking) => booking.serviceId)) },
-      })
-      .project({ title: 1, image: 1, category: 1 })
-      .toArray();
-
-    const serviceMap = new Map(
-      services.map((service) => [service._id.toString(), service])
-    );
 
     return res.status(200).json({
       success: true,
       total: bookings.length,
-      bookings: bookings.map((booking) => ({
-        ...booking,
-        service: serviceMap.get(booking.serviceId) || null,
-      })),
+      bookings: await attachServices(db, bookings),
     });
   } catch (error) {
     console.error("Get technician bookings error:", error);
@@ -107,10 +96,14 @@ router.get("/technician", verifyTechnician, async (req, res) => {
   }
 });
 
-// CREATE A BOOKING (customer only)
+// CREATE A REPAIR REQUEST (customer only)
 router.post("/", verifyCustomer, async (req, res) => {
   try {
-    const { serviceId, bookingDate, address, phone, note } = req.body || {};
+    const body = req.body || {};
+
+    const { serviceId, address, phone } = body;
+    const preferredDate = body.preferredDate ?? body.bookingDate;
+    const problemDescription = body.problemDescription ?? body.note;
 
     if (!isValidObjectId(serviceId)) {
       return res.status(400).json({
@@ -119,19 +112,19 @@ router.post("/", verifyCustomer, async (req, res) => {
       });
     }
 
-    const parsedDate = parseDateOnly(bookingDate);
+    const parsedDate = parseDateOnly(preferredDate);
 
     if (!parsedDate) {
       return res.status(400).json({
         success: false,
-        message: "Please choose a valid booking date.",
+        message: "Please choose a valid preferred date.",
       });
     }
 
     if (parsedDate < startOfToday()) {
       return res.status(400).json({
         success: false,
-        message: "Booking date cannot be in the past.",
+        message: "Preferred date cannot be in the past.",
       });
     }
 
@@ -149,6 +142,17 @@ router.post("/", verifyCustomer, async (req, res) => {
       });
     }
 
+    // The PDF requires a real problem description, not a short note.
+    if (
+      typeof problemDescription !== "string" ||
+      problemDescription.trim().length < 20
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Problem description must be at least 20 characters.",
+      });
+    }
+
     const db = getDB();
     const service = await db.collection("services").findOne({
       _id: new ObjectId(serviceId),
@@ -163,9 +167,9 @@ router.post("/", verifyCustomer, async (req, res) => {
       });
     }
 
-    // A customer should not be able to stack duplicate active requests.
+    // A customer cannot stack two active requests for the same service.
     const activeBooking = await db.collection("bookings").findOne({
-      customerId: req.user.id,
+      customerEmail: req.user.email,
       serviceId,
       status: { $in: ACTIVE_BOOKING_STATUSES },
     });
@@ -174,30 +178,33 @@ router.post("/", verifyCustomer, async (req, res) => {
       return res.status(409).json({
         success: false,
         message:
-          "You already have an active booking for this service. Please wait for it to finish.",
+          "You already have an active request for this service. Please wait for it to finish.",
       });
     }
 
     const now = new Date();
 
     const booking = {
-      customerId: req.user.id,
-      customerName: req.user.name,
-      customerEmail: req.user.email,
-      customerPhone: req.user.phone || phone.trim(),
-      technicianId: service.technicianId,
-      technicianName: service.technicianName,
       serviceId,
       serviceTitle: service.title,
-      serviceMode: service.serviceMode,
-      serviceArea: service.serviceArea,
-      price: service.basePrice,
-      bookingDate: parsedDate,
+      serviceImage: service.image || "",
+      category: service.category,
+      serviceMode: service.serviceMode || "",
+      serviceArea: service.serviceArea || "",
+      basePrice: service.basePrice,
+      technicianId: service.technicianId || "",
+      technicianName: service.technicianName || "",
+      technicianEmail: service.technicianEmail || "",
+      customerId: req.user.id,
+      customerName: req.user.name || "",
+      customerEmail: req.user.email,
+      customerPhone: phone.trim(),
       address: address.trim(),
-      phone: phone.trim(),
-      note: typeof note === "string" ? note.trim() : "",
+      preferredDate: parsedDate,
+      problemDescription: problemDescription.trim(),
       status: "requested",
-      ...pendingPayment(),
+      finalAmount: service.basePrice,
+      paymentStatus: "unpaid",
       createdAt: now,
       updatedAt: now,
     };
@@ -206,7 +213,7 @@ router.post("/", verifyCustomer, async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Booking request sent to the technician.",
+      message: "Repair request sent to the technician.",
       booking: { ...booking, _id: result.insertedId },
     });
   } catch (error) {
@@ -214,12 +221,12 @@ router.post("/", verifyCustomer, async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create booking.",
+      message: "Failed to create the repair request.",
     });
   }
 });
 
-// CANCEL A BOOKING (customer, only before the job starts)
+// CANCEL A BOOKING (customer, only while it is still "requested")
 router.patch("/:id/cancel", verifyCustomer, async (req, res) => {
   try {
     const { id } = req.params;
@@ -241,17 +248,17 @@ router.patch("/:id/cancel", verifyCustomer, async (req, res) => {
       });
     }
 
-    if (booking.customerId !== req.user.id) {
+    if (booking.customerEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
         message: "You can only cancel your own bookings.",
       });
     }
 
-    if (!["requested", "accepted"].includes(booking.status)) {
+    if (booking.status !== "requested") {
       return res.status(409).json({
         success: false,
-        message: `A booking that is already ${booking.status} cannot be cancelled.`,
+        message: "Only a requested booking can be cancelled.",
       });
     }
 
@@ -275,11 +282,11 @@ router.patch("/:id/cancel", verifyCustomer, async (req, res) => {
   }
 });
 
-// ADVANCE BOOKING STATUS (technician who owns the service only)
+// ADVANCE BOOKING STATUS (technician who owns the job only)
 router.patch("/:id/status", verifyTechnician, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, reason } = req.body || {};
+    const { status, reason, finalAmount } = req.body || {};
 
     if (!isValidObjectId(id)) {
       return res.status(400).json({
@@ -304,7 +311,7 @@ router.patch("/:id/status", verifyTechnician, async (req, res) => {
       });
     }
 
-    if (booking.technicianId !== req.user.id) {
+    if (booking.technicianEmail !== req.user.email) {
       return res.status(403).json({
         success: false,
         message: "You can only update bookings for your own services.",
@@ -327,12 +334,27 @@ router.patch("/:id/status", verifyTechnician, async (req, res) => {
         typeof reason === "string" ? reason.trim() : "";
     }
 
+    // Completing a job must lock in the final price for the Stripe payment.
+    if (status === "completed") {
+      const amount = toPositiveNumber(finalAmount);
+
+      if (amount === null) {
+        return res.status(400).json({
+          success: false,
+          message: "Final amount must be a number greater than 0.",
+        });
+      }
+
+      updates.finalAmount = amount;
+    }
+
     await bookings.updateOne({ _id: new ObjectId(id) }, { $set: updates });
 
     return res.status(200).json({
       success: true,
       message: `Booking marked as ${status}.`,
       status,
+      finalAmount: updates.finalAmount ?? booking.finalAmount,
     });
   } catch (error) {
     console.error("Update booking status error:", error);
@@ -356,7 +378,8 @@ router.get("/:id", verifyToken, async (req, res) => {
       });
     }
 
-    const booking = await getDB()
+    const db = getDB();
+    const booking = await db
       .collection("bookings")
       .findOne({ _id: new ObjectId(id) });
 
@@ -368,8 +391,8 @@ router.get("/:id", verifyToken, async (req, res) => {
     }
 
     const isOwner =
-      booking.customerId === req.user.id ||
-      booking.technicianId === req.user.id ||
+      booking.customerEmail === req.user.email ||
+      booking.technicianEmail === req.user.email ||
       req.user.role === "admin";
 
     if (!isOwner) {
@@ -379,7 +402,7 @@ router.get("/:id", verifyToken, async (req, res) => {
       });
     }
 
-    const payment = await getDB()
+    const payment = await db
       .collection("payments")
       .findOne({ bookingId: id });
 

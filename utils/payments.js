@@ -23,7 +23,7 @@ const markBookingPaid = async ({
   const payment = await payments.findOne({ bookingId });
 
   // Idempotency: a paid payment never gets updated twice.
-  if (payment?.status === "paid") {
+  if (payment?.paymentStatus === "paid") {
     return { paid: true, alreadyPaid: true };
   }
 
@@ -38,6 +38,10 @@ const markBookingPaid = async ({
     return { paid: false, reason: "booking-not-completed" };
   }
 
+  if (booking.paymentStatus === "paid") {
+    return { paid: true, alreadyPaid: true };
+  }
+
   const now = new Date();
 
   await payments.updateOne(
@@ -45,12 +49,18 @@ const markBookingPaid = async ({
     {
       $set: {
         bookingId,
-        customerId: booking.customerId,
-        technicianId: booking.technicianId,
-        amount: Number(amount ?? booking.price) || booking.price,
+        serviceTitle: booking.serviceTitle,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        technicianName: booking.technicianName,
+        technicianEmail: booking.technicianEmail,
+        amount:
+          Number(amount ?? booking.finalAmount ?? booking.basePrice) ||
+          booking.basePrice,
         currency: currency || payment?.currency || "usd",
-        status: "paid",
-        stripeSessionId: stripeSessionId || payment?.stripeSessionId || null,
+        paymentStatus: "paid",
+        stripeSessionId:
+          stripeSessionId || payment?.stripeSessionId || null,
         transactionId: paymentIntentId || stripeSessionId || null,
         paidAt: now,
         updatedAt: now,
