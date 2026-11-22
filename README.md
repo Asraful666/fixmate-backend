@@ -255,3 +255,9 @@ unchanged: `npm run dev` still calls `index.js` and listens on port 5000.
 | `npm run dev` | Start with nodemon |
 | `npm start` | Start production server |
 | `npm run seed` | Recreate demo users, services, bookings and payments |
+
+## Author
+
+**Md Asraful Islam**
+
+GitHub: https://github.com/Asraful666
